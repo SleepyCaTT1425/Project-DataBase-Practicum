@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom'; // 1. นำเข้า useNavigate และ Link สำหรับการเปลี่ยนหน้า
 
-function Register({ onNavigateToLogin }) {
+function Register() { // ไม่ต้องรับ props onNavigateToLogin แล้ว เพราะเราใช้ useNavigate แทน
+  const navigate = useNavigate(); // เรียกใช้งานฟังก์ชันสำหรับเปลี่ยนหน้า
+
   const [formData, setFormData] = useState({
     username: '',
     password: '',
@@ -16,22 +19,41 @@ function Register({ onNavigateToLogin }) {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
+  // 2. เติม async เพื่อให้รองรับการทำงานกับ API
+  const handleSubmit = async (e) => {
+    e.preventDefault(); // (ไม่สำคัญ) ป้องกันหน้าเว็บรีเฟรชตัวเอง
     
-    // เช็คว่ารหัสผ่านตรงกันไหม
+    // 3. เช็คว่ารหัสผ่านตรงกันไหม
     if (formData.password !== formData.confirmPassword) {
       setError('รหัสผ่านและการยืนยันรหัสผ่านไม่ตรงกันครับ');
       return;
     }
 
-    setError('');
-    console.log("ส่งข้อมูลลงทะเบียนไป API:", formData);
-    // TODO: ส่งข้อมูลไปบันทึกลง MySQL ตรงนี้
-    
-    alert('ลงทะเบียนสำเร็จ! (จำลอง)');
-    if (onNavigateToLogin) {
-      onNavigateToLogin(); // กลับไปหน้า Login อัตโนมัติหลังสมัครเสร็จ
+    setError(''); // เคลียร์ข้อผิดพลาดก่อนเริ่มส่งข้อมูล
+
+    try {
+      // 4. ใช้คำสั่ง fetch ยิงข้อมูลไปให้ Backend บันทึกลง MySQL
+      const response = await fetch('http://localhost:5000/api/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData), // แปลงข้อมูลทั้งหมดเป็น JSON ส่งไป
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        // ถ้า Backend ตอบกลับมาว่าลงทะเบียนสำเร็จ
+        alert('ลงทะเบียนสำเร็จ! ระบบจะพาท่านไปยังหน้าเข้าสู่ระบบ');
+        navigate('/login'); // สั่งให้เปลี่ยนไปหน้า Login อัตโนมัติ
+      } else {
+        // ถ้าไม่สำเร็จ (เช่น มี username นี้ในระบบแล้ว)
+        setError(data.error || 'เกิดข้อผิดพลาดในการลงทะเบียน');
+      }
+    } catch (err) {
+      console.error("Error connection:", err);
+      setError('ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้ กรุณาลองใหม่อีกครั้ง');
     }
   };
 
@@ -44,7 +66,6 @@ function Register({ onNavigateToLogin }) {
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
           
-          {/* ข้อมูลส่วนตัว */}
           <div style={{ display: 'flex', gap: '15px' }}>
             <div style={{ flex: 1 }}>
               <label style={{ display: 'block', marginBottom: '8px', color: '#555', fontWeight: 'bold' }}>ชื่อ-นามสกุล</label>
@@ -73,7 +94,6 @@ function Register({ onNavigateToLogin }) {
 
           <hr style={{ border: 'none', borderTop: '1px solid #eee', margin: '10px 0' }} />
 
-          {/* ข้อมูลบัญชี */}
           <div>
             <label style={{ display: 'block', marginBottom: '8px', color: '#555', fontWeight: 'bold' }}>ชื่อผู้ใช้งาน (Username)</label>
             <input
@@ -122,12 +142,13 @@ function Register({ onNavigateToLogin }) {
 
         <div style={{ marginTop: '20px', textAlign: 'center', color: '#666' }}>
           มีบัญชีอยู่แล้ว?{' '}
-          <span 
-            onClick={onNavigateToLogin}
+          {/* เปลี่ยนมาใช้ Link เพื่อให้คลิกแล้วนำทางได้ถูกต้องตามหลัก React Router */}
+          <Link 
+            to="/login"
             style={{ color: '#3498db', cursor: 'pointer', textDecoration: 'underline', fontWeight: 'bold' }}
           >
             เข้าสู่ระบบที่นี่
-          </span>
+          </Link>
         </div>
       </div>
     </div>

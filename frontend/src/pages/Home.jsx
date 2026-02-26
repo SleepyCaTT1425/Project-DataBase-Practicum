@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+// 1. นำเข้า useEffect และ useState มาใช้จัดการข้อมูล
+import React, { useState, useEffect } from 'react';
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { buildings, initialStalls as stalls } from '../data/mapData';
 
-// ดึงข้อมูลร้านและตึกที่เราแยกไฟล์ไว้
-import { activeShops, buildingInfo } from '../data/mockData';
+// 2. นำเข้าแค่ buildingInfo เท่านั้น (ลบ activeShops ออกไป เพราะเราจะดึงจาก DB)
+import { buildingInfo } from '../data/mockData';
 
-// 1. เพิ่มฟังก์ชันหาจุดกึ่งกลาง (แบบเดียวกับหน้า Booking)
 const getPolygonCenter = (pointsStr) => {
   const parts = pointsStr.trim().split(/\s+/);
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -25,13 +25,41 @@ function Home() {
   const [selectedShop, setSelectedShop] = useState(null);
   const [selectedBuilding, setSelectedBuilding] = useState(null);
   const [popupPos, setPopupPos] = useState({ x: 0, y: 0 });
+  
+  // 3. สร้าง State เพื่อเก็บข้อมูลร้านค้าแทนข้อมูลจำลอง
+  const [activeShops, setActiveShops] = useState({});
 
-  // 2. ปรับฟังก์ชันให้รับค่า stall ทั้งก้อน เพื่อเอา points มาคำนวณ
+  // 4. ใช้ useEffect ดึงข้อมูลจาก MongoDB ทันทีที่เปิดหน้านี้
+  useEffect(() => {
+    const fetchVendors = async () => {
+      try {
+        const response = await fetch('http://localhost:5000/api/vendors');
+        const data = await response.json(); // ได้ข้อมูลมาเป็น Array
+
+        if (response.ok) {
+          // 5. แปลง Array ให้เป็น Object แบบเก่าที่ใช้รหัสล็อคเป็นคีย์ เพื่อให้โค้ดเดิมทำงานได้
+          const shopMap = {};
+          data.forEach(shop => {
+            if (shop.stallId) {
+              shopMap[shop.stallId] = shop;
+            }
+          });
+          
+          setActiveShops(shopMap); // นำข้อมูลที่แปลงแล้วไปใส่ใน State
+        }
+      } catch (error) {
+        console.error("Error fetching vendor data:", error);
+      }
+    };
+
+    fetchVendors();
+  }, []);
+
   const handleStallClick = (stall) => {
     if (activeShops[stall.id]) {
       setSelectedShop({ stallId: stall.id, ...activeShops[stall.id] });
       setSelectedBuilding(null); 
-      setPopupPos(getPolygonCenter(stall.points)); // ดึงพิกัดจากล็อกร้านค้า
+      setPopupPos(getPolygonCenter(stall.points)); 
     }
   };
 
@@ -48,7 +76,6 @@ function Home() {
         >
           <TransformComponent wrapperStyle={{ width: "100%", height: "100%" }}>
             
-            {/* กล่องกระดาษแผนที่ */}
             <div style={{ position: 'relative', width: '1245px', height: '1207px' }}>
               <img 
                 src="/map-latest.webp" 
@@ -59,7 +86,6 @@ function Home() {
                 viewBox="0 0 1245 1207" 
                 style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
               >
-                {/* วาดตึกให้กดได้เหมือนหน้า Booking */}
                 {buildings.map((bldg) => (
                   <polygon
                     key={bldg.id}
@@ -67,7 +93,7 @@ function Home() {
                     onClick={() => { 
                       setSelectedBuilding(bldg); 
                       setSelectedShop(null); 
-                      setPopupPos(getPolygonCenter(bldg.points)); // ดึงพิกัดจากตึก
+                      setPopupPos(getPolygonCenter(bldg.points));
                     }}
                     style={{ fill: 'rgba(150, 150, 150, 0.5)', stroke: 'black', strokeWidth: '1', cursor: 'pointer' }}
                     onMouseEnter={(e) => e.target.style.fill = 'rgba(150, 150, 150, 0.8)'}
@@ -77,14 +103,13 @@ function Home() {
                   </polygon>
                 ))}
                 
-                {/* วาดล็อกร้านค้า */}
                 {stalls.map((stall) => {
                   const isShopActive = activeShops[stall.id];
                   return (
                     <polygon
                       key={stall.id}
                       points={stall.points}
-                      onClick={() => handleStallClick(stall)} // เรียกฟังก์ชันพร้อมส่งข้อมูลล็อกไป
+                      onClick={() => handleStallClick(stall)}
                       style={{
                         cursor: isShopActive ? 'pointer' : 'default',
                         fill: isShopActive ? 'rgba(255, 165, 0, 0.4)' : 'transparent',
@@ -104,7 +129,6 @@ function Home() {
                 })}
               </svg>
 
-              {/* ---------------- 3. Pop-up ข้อมูลร้านค้า (แบบมีเมนูอาหาร) ย้ายมาในแผนที่ ---------------- */}
               {selectedShop && (
                 <div style={{
                   position: 'absolute', 
@@ -115,19 +139,22 @@ function Home() {
                 }}>
                   <h3 style={{ marginTop: 0, marginBottom: '10px' }}>{selectedShop.shopName} <span style={{fontSize: '14px', color: '#666'}}>(ล็อค {selectedShop.stallId})</span></h3>
                   
-                  <img src={selectedShop.image} alt="หน้าร้าน" style={{ width: '100%', height: '180px', objectFit: 'cover', borderRadius: '8px', marginBottom: '15px' }} />
+                  {/* เช็คว่ามีภาพไหม ถ้าไม่มีให้ใช้รูปแทน */}
+                  <img src={selectedShop.image || 'https://placehold.co/400x200?text=ไม่มีรูปภาพ'} alt="หน้าร้าน" style={{ width: '100%', height: '180px', objectFit: 'cover', borderRadius: '8px', marginBottom: '15px' }} />
                   
-                  <p style={{ margin: '0 0 15px 0', color: '#555' }}><strong>หมวดหมู่:</strong> {selectedShop.categories.join(', ')}</p>
+                  <p style={{ margin: '0 0 15px 0', color: '#555' }}>
+                    <strong>หมวดหมู่:</strong> {selectedShop.categories ? selectedShop.categories.join(', ') : 'ไม่มีหมวดหมู่'}
+                  </p>
                   
                   <div style={{ backgroundColor: '#f9f9f9', padding: '10px', borderRadius: '8px' }}>
                     <strong style={{ display: 'block', marginBottom: '10px', color: '#e67e22' }}>📋 เมนูแนะนำ</strong>
                     <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                      {selectedShop.menus.map((menu, index) => (
+                      {selectedShop.menus && selectedShop.menus.length > 0 ? selectedShop.menus.map((menu, index) => (
                         <li key={index} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px dashed #ccc' }}>
                           <span>{menu.name}</span>
                           <span style={{ fontWeight: 'bold' }}>{menu.price} ฿</span>
                         </li>
-                      ))}
+                      )) : <li style={{ color: '#999' }}>ยังไม่มีเมนูอาหาร</li>}
                     </ul>
                   </div>
                   
@@ -135,7 +162,6 @@ function Home() {
                 </div>
               )}
 
-              {/* ---------------- Pop-up ข้อมูลตึก (แยกจากร้านค้า) ย้ายมาในแผนที่ ---------------- */}
               {selectedBuilding && (
                 <div style={{
                   position: 'absolute', 
@@ -147,7 +173,7 @@ function Home() {
                   <h3 style={{ marginTop: 0, marginBottom: '15px', color: '#2c3e50' }}>{selectedBuilding.name}</h3>
                   
                   <img 
-                    src={buildingInfo[selectedBuilding.id]?.image || 'https://via.placeholder.com/400x200?text=รูปภาพอาคาร'} 
+                    src={buildingInfo[selectedBuilding.id]?.image || 'https://placehold.co/400x200?text=รูปภาพอาคาร'} 
                     alt={selectedBuilding.name} 
                     style={{ width: '100%', height: '180px', objectFit: 'cover', borderRadius: '8px', marginBottom: '15px' }} 
                   />
@@ -165,8 +191,7 @@ function Home() {
                 </div>
               )}
 
-            </div> {/* <--- จบกล่องกระดาษแผนที่ */}
-            
+            </div>
           </TransformComponent>
         </TransformWrapper>
       </div>

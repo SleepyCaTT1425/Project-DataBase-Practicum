@@ -36,7 +36,7 @@ function Login({ onLogin }) {
         localStorage.setItem('isLoggedIn', 'true');
         
         if (onLogin) {
-          onLogin(username, password);
+          onLogin();
         }
         
         navigate('/booking');

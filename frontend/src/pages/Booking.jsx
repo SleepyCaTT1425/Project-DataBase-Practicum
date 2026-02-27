@@ -394,7 +394,23 @@ function Booking({ isLoggedIn }) {
         alert(`จองพื้นที่สำหรับร้าน "${shopName}" เรียบร้อยแล้ว ข้อมูลซิงค์ลงฐานข้อมูลสำเร็จ!`);
         setSelectedStall(null);
         setShopName(''); 
-        window.location.reload(); 
+        // เรียก API ใหม่เพื่อดึงสถานะล็อกอัพเดต โดยไม่รีโหลดทั้งหน้า
+        try {
+          const refreshResp = await fetch('http://localhost:5000/api/booths');
+          if (refreshResp.ok) {
+            const freshData = await refreshResp.json();
+            const updatedStalls = initialStalls.map(stall => {
+              const dbBooth = freshData.find(b => b.booth_code === stall.id);
+              if (dbBooth) {
+                return { ...stall, status: dbBooth.status, db_id: dbBooth.id };
+              }
+              return stall;
+            });
+            setStalls(updatedStalls);
+          }
+        } catch (err) {
+          console.error("Error refreshing booths after booking:", err);
+        }
       } else {
         alert("เกิดข้อผิดพลาดในการจอง MySQL: " + data.message);
       }

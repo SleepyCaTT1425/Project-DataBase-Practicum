@@ -1,8 +1,12 @@
 
-drop database if exists kasetfair;
-Create database kasetfair;
+-- drop database if exists kasetfair;
+-- Create database kasetfair;
 
 use kasetfair;
+
+ALTER TABLE Reservations ADD COLUMN payment_status ENUM('unpaid', 'checking', 'paid') DEFAULT 'unpaid';
+ALTER TABLE Reservations ADD COLUMN slip_image LONGTEXT;
+ALTER TABLE Reservations MODIFY COLUMN slip_image LONGTEXT;
 
 CREATE TABLE Users (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -30,11 +34,6 @@ CREATE TABLE Reservations (
     FOREIGN KEY (user_id) REFERENCES Users(id),
     FOREIGN KEY (booth_id) REFERENCES Booths(id)
 );
-
-INSERT INTO Users (name, email, password_hash, phone, role) VALUES
-('Admin Kaset', 'admin@kasetfair.com', 'hashed_123', '0801112222', 'admin'),
-('Vendor CP', 'cpfood@gmail.com', 'hashed_456', '0812223333', 'vendor'),
-('Guest John', 'john@gmail.com', 'hashed_789', '0823334444', 'guest');
 
 INSERT INTO Booths (booth_code, size_sqm, price, status)
 WITH RECURSIVE numbers AS (

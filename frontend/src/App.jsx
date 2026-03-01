@@ -50,6 +50,7 @@ import Booking from './pages/Booking';
 import MyShop from './pages/MyShop';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import Admin from './pages/Admin';
 
 function App() {
   // 1. ดึงค่าเริ่มต้นจาก localStorage แทน ถ้ามีคำว่า 'true' ให้ถือว่าล็อกอินแล้ว
@@ -74,7 +75,14 @@ function App() {
           path="/my-shop" 
           element={isLoggedIn ? <MyShop /> : <Navigate to="/login" replace />} 
         />
-        <Route path="/login" element={<Login onLogin={() => setIsLoggedIn(true)} />} />
+        <Route 
+          path="/admin" 
+          element={isLoggedIn ? <Admin /> : <Navigate to="/login" replace />} 
+        />
+        <Route path="/login" element={<Login onLogin={() => {
+          setIsLoggedIn(true);
+          localStorage.setItem('isLoggedIn', 'true');
+        }} />} />
         <Route path="/register" element={<Register />} />
       </Routes>
     </BrowserRouter>

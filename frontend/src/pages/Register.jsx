@@ -1,74 +1,102 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom'; // 1. นำเข้า useNavigate และ Link สำหรับการเปลี่ยนหน้า
+import { useNavigate, Link } from 'react-router-dom';
 
-function Register() { // ไม่ต้องรับ props onNavigateToLogin แล้ว เพราะเราใช้ useNavigate แทน
-  const navigate = useNavigate(); // เรียกใช้งานฟังก์ชันสำหรับเปลี่ยนหน้า
+function Register() {
+  const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
-    username: '',
+    email: '', 
     password: '',
     confirmPassword: '',
     fullName: '',
     phoneNumber: ''
   });
 
-  const [error, setError] = useState('');
+  // 👇 1. สร้าง State สำหรับควบคุม Popup แทน window.alert
+  const [confirmDialog, setConfirmDialog] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: null
+  });
+
+  const closeConfirmDialog = () => setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null });
+
+  const showSuccessAlert = (message, onConfirmCallback) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: '✅ สำเร็จ',
+      message: message,
+      onConfirm: () => {
+        closeConfirmDialog();
+        if (onConfirmCallback) onConfirmCallback();
+      }
+    });
+  };
+
+  const showErrorAlert = (message) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: '❌ ข้อผิดพลาด',
+      message: message,
+      onConfirm: () => closeConfirmDialog()
+    });
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  // 2. เติม async เพื่อให้รองรับการทำงานกับ API
   const handleSubmit = async (e) => {
-    e.preventDefault(); // (ไม่สำคัญ) ป้องกันหน้าเว็บรีเฟรชตัวเอง
+    e.preventDefault();
     
-    // 3. เช็คว่ารหัสผ่านตรงกันไหม
+    // 👇 2. เปลี่ยนมาใช้ showErrorAlert แทนการเซ็ตข้อความสีแดงแบบเดิม
     if (formData.password !== formData.confirmPassword) {
-      setError('รหัสผ่านและการยืนยันรหัสผ่านไม่ตรงกันครับ');
+      showErrorAlert('รหัสผ่านและการยืนยันรหัสผ่านไม่ตรงกันครับ');
       return;
     }
 
-    setError(''); // เคลียร์ข้อผิดพลาดก่อนเริ่มส่งข้อมูล
-
     try {
-      // 4. ใช้คำสั่ง fetch ยิงข้อมูลไปให้ Backend บันทึกลง MySQL
+      const payload = {
+        ...formData,
+        username: formData.email 
+      };
+
       const response = await fetch('http://localhost:5000/api/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData), // แปลงข้อมูลทั้งหมดเป็น JSON ส่งไป
+        body: JSON.stringify(payload), 
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        // ถ้า Backend ตอบกลับมาว่าลงทะเบียนสำเร็จ
-        alert('ลงทะเบียนสำเร็จ! ระบบจะพาท่านไปยังหน้าเข้าสู่ระบบ');
-        navigate('/login'); // สั่งให้เปลี่ยนไปหน้า Login อัตโนมัติ
+        // 👇 3. เรียกใช้ showSuccessAlert และให้มันพากลับไปหน้า Login เมื่อกด "ตกลง"
+        showSuccessAlert('ลงทะเบียนสำเร็จ! ระบบจะพาท่านไปยังหน้าเข้าสู่ระบบ', () => {
+          navigate('/login'); 
+        });
       } else {
-        // ถ้าไม่สำเร็จ (เช่น มี username นี้ในระบบแล้ว)
-        setError(data.error || 'เกิดข้อผิดพลาดในการลงทะเบียน');
+        showErrorAlert(data.error || 'เกิดข้อผิดพลาดในการลงทะเบียน');
       }
     } catch (err) {
       console.error("Error connection:", err);
-      setError('ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้ กรุณาลองใหม่อีกครั้ง');
+      showErrorAlert('ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้ กรุณาลองใหม่อีกครั้ง');
     }
   };
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', backgroundColor: '#f0f0f0', fontFamily: 'sans-serif', padding: '20px' }}>
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', backgroundColor: '#f0f0f0', fontFamily: 'sans-serif', padding: '20px', position: 'relative' }}>
       <div style={{ backgroundColor: 'white', padding: '40px', borderRadius: '12px', boxShadow: '0 8px 24px rgba(0,0,0,0.1)', width: '100%', maxWidth: '450px', boxSizing: 'border-box' }}>
         <h2 style={{ textAlign: 'center', marginBottom: '20px', color: '#2c3e50', fontSize: '24px' }}>ลงทะเบียนผู้ใช้งานใหม่</h2>
         
-        {error && <div style={{ color: 'red', marginBottom: '15px', textAlign: 'center', backgroundColor: '#ffebee', padding: '10px', borderRadius: '4px' }}>{error}</div>}
-
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
           
           <div style={{ display: 'flex', gap: '15px' }}>
             <div style={{ flex: 1 }}>
-              <label style={{ display: 'block', marginBottom: '8px', color: '#555', fontWeight: 'bold' }}>ชื่อ-นามสกุล</label>
+              <label style={{ display: 'block', marginBottom: '8px', color: '#555', fontWeight: 'bold' }}>ชื่อผู้ใช้งาน</label>
               <input
                 type="text"
                 name="fullName"
@@ -95,12 +123,13 @@ function Register() { // ไม่ต้องรับ props onNavigateToLogin 
           <hr style={{ border: 'none', borderTop: '1px solid #eee', margin: '10px 0' }} />
 
           <div>
-            <label style={{ display: 'block', marginBottom: '8px', color: '#555', fontWeight: 'bold' }}>ชื่อผู้ใช้งาน (Username)</label>
+            <label style={{ display: 'block', marginBottom: '8px', color: '#555', fontWeight: 'bold' }}>อีเมล (Email)</label>
             <input
-              type="text"
-              name="username"
-              value={formData.username}
+              type="email" 
+              name="email"
+              value={formData.email}
               onChange={handleChange}
+              placeholder="example@email.com"
               style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ccc', boxSizing: 'border-box' }}
               required
             />
@@ -142,7 +171,6 @@ function Register() { // ไม่ต้องรับ props onNavigateToLogin 
 
         <div style={{ marginTop: '20px', textAlign: 'center', color: '#666' }}>
           มีบัญชีอยู่แล้ว?{' '}
-          {/* เปลี่ยนมาใช้ Link เพื่อให้คลิกแล้วนำทางได้ถูกต้องตามหลัก React Router */}
           <Link 
             to="/login"
             style={{ color: '#3498db', cursor: 'pointer', textDecoration: 'underline', fontWeight: 'bold' }}
@@ -151,6 +179,45 @@ function Register() { // ไม่ต้องรับ props onNavigateToLogin 
           </Link>
         </div>
       </div>
+
+      {/* 👇 4. MODAL กลางจอสำหรับหน้าลงทะเบียน 👇 */}
+      {confirmDialog.isOpen && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999
+        }}>
+          <div style={{
+            backgroundColor: 'white', padding: '30px', borderRadius: '12px', width: '90%', maxWidth: '400px', 
+            boxShadow: '0 10px 25px rgba(0,0,0,0.2)', textAlign: 'center'
+          }}>
+            <h3 style={{ 
+              margin: '0 0 15px 0', 
+              color: confirmDialog.title.includes('✅') ? '#27ae60' : '#e74c3c', 
+              fontSize: '22px' 
+            }}>
+              {confirmDialog.title}
+            </h3>
+            
+            <p style={{ color: '#555', fontSize: '16px', lineHeight: '1.6', whiteSpace: 'pre-line', marginBottom: '25px' }}>
+              {confirmDialog.message}
+            </p>
+            
+            <div style={{ display: 'flex', gap: '15px', justifyContent: 'center' }}>
+              <button 
+                onClick={confirmDialog.onConfirm} 
+                style={{ 
+                  padding: '12px 20px', 
+                  backgroundColor: confirmDialog.title.includes('✅') ? '#3498db' : '#e74c3c', 
+                  color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '16px', flex: 1 
+                }}
+              >
+                ตกลง
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

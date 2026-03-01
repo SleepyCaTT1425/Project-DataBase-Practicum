@@ -1,83 +1,138 @@
+import os
+from dotenv import load_dotenv # 👇 นำเข้าไลบรารีสำหรับอ่าน .env
 from flask import Flask, request, jsonify
-from flask_cors import CORS # นำเข้า CORS เพื่อให้ React เชื่อมต่อได้
+from flask_cors import CORS 
 import mysql.connector
+from mysql.connector import pooling
 from pymongo import MongoClient
-from werkzeug.security import generate_password_hash, check_password_hash # ใช้เข้ารหัสผ่าน
+from werkzeug.security import generate_password_hash, check_password_hash 
 import subprocess
 import sys
+from datetime import datetime
+
+# 👇 โหลดค่าจากไฟล์ .env 👇
+load_dotenv()
+
+DB_HOST = os.getenv("DB_HOST", "localhost")
+DB_USER = os.getenv("DB_USER", "root")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "")
+DB_NAME = os.getenv("DB_NAME", "kasetfair")
+PROMPTPAY_PHONE = os.getenv("PROMPTPAY_PHONE", "0801112222")
+PAYMENT_TIMEOUT_MINUTES = int(os.getenv("PAYMENT_TIMEOUT_MINUTES", 10))
 
 app = Flask(__name__)
-CORS(app) # เปิดใช้งาน CORS สำหรับทุกเส้นทาง
+CORS(app) 
 
-# -- utilities -------------------------------------------------------------
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  
 
 def ensure_mysql_running(service_name="MySQL80"):
-    """Try to start the MySQL service on Windows before we connect.
-
-    The flask script can then be invoked with a single `python main.py`
-    and we won't have to manually launch Workbench every time.  If the
-    service is already running the call will simply fail quietly.
-    """
     if sys.platform.startswith("win"):
         try:
-            subprocess.run(["net", "start", service_name], check=True,
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except subprocess.CalledProcessError:
-            # service may already be running or not installed; ignore
-            pass
-    else:
-        # non‑Windows users should manage MySQL via their own init system
-        pass
+            subprocess.run(["net", "start", service_name], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except subprocess.CalledProcessError: pass
 
-# เรียกใช้ MySQL โดยเลือกเซิร์ฟเวอร์ก่อน
 ensure_mysql_running()
 
-# เชื่อมต่อ MySQL
+# ==========================================
+# 🌟 ระบบ Connection Pool (ดึงรหัสจาก .env)
+# ==========================================
+dbconfig = {
+    "host": DB_HOST,
+    "user": DB_USER,
+    "password": DB_PASSWORD, 
+    "database": DB_NAME
+}
+
 try:
-    mysql_conn = mysql.connector.connect(
-        host="localhost",
-        user="root",
-        password="Propond14!",
-        database="kasetfair"
+    mysql_pool = pooling.MySQLConnectionPool(
+        pool_name="kasetfair_pool",
+        pool_size=10,
+        pool_reset_session=True,
+        **dbconfig
     )
 except mysql.connector.Error as err:
-    print(f"Error connecting to MySQL: {err}")
-    mysql_conn = None
+    print(f"Error creating connection pool: {err}")
 
-# เชื่อมต่อ MongoDB
 mongo_client = MongoClient("mongodb://localhost:27017/")
-mongo_db = mongo_client["kasetfair"]
+mongo_db = mongo_client[DB_NAME]
 vendors_collection = mongo_db["Vendor_Details"]
+slips_collection = mongo_db["Payment_Slips"]
 
-# ---------------- API สำหรับบูธและร้านค้า ----------------
+# ==========================================
+# ระบบ Auto-Cancel ยกเลิกจองอัตโนมัติ (ใช้เวลาจาก .env)
+# ==========================================
+@app.before_request
+def check_db_connection_and_cleanup():
+    try:
+        conn = mysql_pool.get_connection()
+        cursor = conn.cursor(dictionary=True)
+        # 👇 ใช้ PAYMENT_TIMEOUT_MINUTES แทนค่าคงที่ 10 👇
+        cursor.execute(f"""
+            SELECT r.id, b.booth_code 
+            FROM Reservations r
+            JOIN Booths b ON r.booth_id = b.id
+            WHERE r.status = 'active' 
+              AND r.payment_status = 'unpaid' 
+              AND r.booking_date < (NOW() - INTERVAL {PAYMENT_TIMEOUT_MINUTES} MINUTE)
+        """)
+        expired_res = cursor.fetchall()
+        
+        if expired_res:
+            expired_ids = [str(r['id']) for r in expired_res]
+            expired_booths = [r['booth_code'] for r in expired_res]
+            
+            format_strings = ','.join(['%s'] * len(expired_ids))
+            cursor.execute(f"UPDATE Reservations SET status = 'cancelled' WHERE id IN ({format_strings})", tuple(expired_ids))
+            cursor.execute(f"UPDATE Booths SET status = 'available' WHERE booth_code IN ({format_strings})", tuple(expired_booths))
+            conn.commit()
+            
+            vendors_collection.delete_many({"stallId": {"$in": expired_booths}})
+            print(f"⚠️ Auto-Cancelled Reservations: {expired_ids}")
+            
+        cursor.close()
+        conn.close() 
+    except Exception as e:
+        print("Cleanup Error:", e)
 
+# ==========================================
+# API สำหรับบูธและร้านค้า
+# ==========================================
 @app.route('/api/booths', methods=['GET'])
 def get_booths():
-    if mysql_conn is None:
-        return jsonify({"error": "Database connection failed"}), 500
     try:
-        cursor = mysql_conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM Booths")
+        conn = mysql_pool.get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT b.id, b.booth_code, b.size_sqm, b.price, b.status, r.payment_status
+            FROM Booths b
+            LEFT JOIN Reservations r ON b.id = r.booth_id AND r.status = 'active'
+        """)
         booths = cursor.fetchall()
         cursor.close()
+        conn.close()
         return jsonify(booths)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception as e: return jsonify({"error": str(e)}), 500
 
 @app.route('/api/booths/<int:booth_id>', methods=['PUT'])
 def update_booth(booth_id):
-    if mysql_conn is None:
-        return jsonify({"error": "Database connection failed"}), 500
     try:
         data = request.json
-        new_status = data.get('status')
-        cursor = mysql_conn.cursor()
-        cursor.execute("UPDATE Booths SET status = %s WHERE id = %s", (new_status, booth_id))
-        mysql_conn.commit()
+        status = data.get('status')
+        price = data.get('price') 
+        
+        conn = mysql_pool.get_connection()
+        cursor = conn.cursor()
+        if status and price is not None:
+            cursor.execute("UPDATE Booths SET status = %s, price = %s WHERE id = %s", (status, price, booth_id))
+        elif status:
+            cursor.execute("UPDATE Booths SET status = %s WHERE id = %s", (status, booth_id))
+        elif price is not None:
+            cursor.execute("UPDATE Booths SET price = %s WHERE id = %s", (price, booth_id))
+        conn.commit()
         cursor.close()
-        return jsonify({"message": f"อัปเดตบูธ {booth_id} เป็นสถานะ {new_status} สำเร็จ!"}), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        conn.close()
+        return jsonify({"message": "Booth updated successfully"}), 200
+    except Exception as e: return jsonify({"error": str(e)}), 500
 
 @app.route('/api/vendors', methods=['POST'])
 def create_vendor():
@@ -85,114 +140,339 @@ def create_vendor():
     vendors_collection.insert_one(data)
     return jsonify({"message": "สร้างข้อมูลร้านค้าสำเร็จ!"}), 201
 
-# 1. เพิ่มเส้นทาง /api/vendors แบบ GET เพื่อให้หน้า Home นำไปใช้
 @app.route('/api/vendors', methods=['GET'])
 def get_vendors():
-    # 2. ดึงข้อมูลร้านค้าทั้งหมดออกมา และซ่อนฟิลด์ _id ของ MongoDB เพื่อไม่ให้ React เกิด Error
-    vendors = list(vendors_collection.find({}, {'_id': 0}))
-    return jsonify(vendors)
+    try:
+        vendors = list(vendors_collection.find({"status": {"$ne": "deleted"}}, {'_id': 0}))
+        
+        conn = mysql_pool.get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT b.booth_code, r.payment_status 
+            FROM Reservations r
+            JOIN Booths b ON r.booth_id = b.id
+            WHERE r.status = 'active'
+        """)
+        reservations = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        status_map = {res['booth_code']: res['payment_status'] for res in reservations}
+        for vendor in vendors:
+            vendor['paymentStatus'] = status_map.get(vendor.get('stallId'), 'unpaid')
+            
+        return jsonify(vendors), 200
+    except Exception as e: 
+        return jsonify({"error": str(e)}), 500
 
-# ---------------- API ที่เพิ่มเข้ามาใหม่ ----------------
+@app.route('/api/myshop/<int:user_id>', methods=['GET'])
+def get_myshop(user_id):
+    try:
+        conn = mysql_pool.get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM Reservations WHERE user_id = %s AND status = 'active'", (user_id,))
+        reservations = cursor.fetchall()
 
-# API สมัครสมาชิก (เชื่อมกับ Register.jsx)
+        if not reservations: 
+            cursor.close()
+            conn.close()
+            return jsonify({"shops": []}), 200
+
+        shops = []
+        timeout_seconds = PAYMENT_TIMEOUT_MINUTES * 60 # แปลงนาทีเป็นวินาที
+
+        for reservation in reservations:
+            booth_code = None
+            booth_price = 0
+            res_id = reservation['id']
+            
+            cursor.execute("SELECT booth_code, price FROM Booths WHERE id = %s", (reservation['booth_id'],))
+            booth = cursor.fetchone()
+            
+            if booth:
+                booth_code = booth.get('booth_code')
+                booth_price = booth.get('price')
+
+            vendor = vendors_collection.find_one({"stallId": booth_code}, {'_id': 0}) if booth_code else None
+            slip_doc = slips_collection.find_one({"reservation_id": res_id}, {'_id': 0, 'slip_image': 1})
+            slip_image_data = slip_doc.get('slip_image', '') if slip_doc else ''
+
+            booking_date = reservation.get('booking_date')
+            seconds_remaining = 0
+            if booking_date and reservation.get('payment_status') == 'unpaid':
+                delta = datetime.now() - booking_date
+                seconds_remaining = max(0, timeout_seconds - int(delta.total_seconds()))
+
+            shops.append({
+                "reservationId": res_id, 
+                "boothCode": booth_code,
+                "boothPrice": booth_price,
+                "paymentStatus": reservation.get('payment_status', 'unpaid'),
+                "slipImage": slip_image_data,
+                "timeLeft": seconds_remaining,
+                "promptpayPhone": PROMPTPAY_PHONE, # 👇 ส่งเบอร์จาก .env ไปให้ React 👇
+                "vendor": vendor
+            })
+
+        cursor.close()
+        conn.close()
+        return jsonify({"shops": shops}), 200
+    except Exception as e: return jsonify({"error": str(e)}), 500
+
+@app.route('/api/vendors/<stall_id>', methods=['PUT'])
+def update_vendor(stall_id):
+    data = request.json
+    try:
+        result = vendors_collection.update_one({"stallId": stall_id}, {"$set": data})
+        if result.matched_count == 0: return jsonify({"error": "ไม่พบร้านค้าในระบบ"}), 404
+        return jsonify({"message": "อัปเดตข้อมูลร้านค้าสำเร็จ"}), 200
+    except Exception as e: return jsonify({"error": str(e)}), 500
+
+# ==========================================
+# API ระบบ Users/Auth 
+# ==========================================
 @app.route('/api/register', methods=['POST'])
 def register():
-    if mysql_conn is None:
-        return jsonify({"error": "Database connection failed"}), 500
     data = request.json
-    # รับข้อมูลจาก React
     name = data.get('fullName')
-    username = data.get('username') # เราจะใช้ตัวนี้แทน email ใน DB
+    username = data.get('username') 
     password = data.get('password')
     phone = data.get('phoneNumber')
-
-    # เข้ารหัสผ่านก่อนเก็บลงฐานข้อมูล
     hashed_password = generate_password_hash(password)
-
-    cursor = mysql_conn.cursor()
+    
     try:
-        cursor.execute(
-            "INSERT INTO Users (name, email, password_hash, phone, role) VALUES (%s, %s, %s, %s, 'vendor')",
-            (name, username, hashed_password, phone)
-        )
-        mysql_conn.commit()
+        conn = mysql_pool.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO Users (name, email, password_hash, phone, role) VALUES (%s, %s, %s, %s, 'vendor')", (name, username, hashed_password, phone))
+        conn.commit()
         cursor.close()
+        conn.close()
         return jsonify({"message": "ลงทะเบียนสำเร็จ"}), 201
     except mysql.connector.IntegrityError:
-        cursor.close()
         return jsonify({"error": "ชื่อผู้ใช้งานนี้มีอยู่ในระบบแล้ว"}), 400
-    except Exception as e:
-        cursor.close()
-        return jsonify({"error": str(e)}), 500
 
-# API เข้าสู่ระบบ (เชื่อมกับ Login.jsx)
 @app.route('/api/login', methods=['POST'])
 def login():
-    if mysql_conn is None:
-        return jsonify({"error": "Database connection failed"}), 500
+    data = request.json
+    username = data.get('username')
+    password = data.get('password')
     try:
-        data = request.json
-        username = data.get('username')
-        password = data.get('password')
-
-        cursor = mysql_conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM Users WHERE email = %s", (username,))
+        conn = mysql_pool.get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT id, name, password_hash, role FROM Users WHERE name = %s OR email = %s", (username, username))
         user = cursor.fetchone()
         cursor.close()
-
-        # เช็คว่าเจอผู้ใช้ และรหัสผ่านที่ Hash ไว้ตรงกันหรือไม่
+        conn.close()
+        
         if user and check_password_hash(user['password_hash'], password):
-            return jsonify({"message": "เข้าสู่ระบบสำเร็จ", "user_id": user['id'], "role": user['role']}), 200
-        else:
-            return jsonify({"error": "ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง"}), 401
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-        if user and check_password_hash(user['password_hash'], password):
-            return jsonify({"message": "เข้าสู่ระบบสำเร็จ", "user_id": user['id'], "role": user['role']}), 200
-        else:
-            return jsonify({"error": "ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง"}), 401
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+            return jsonify({"message": "Login successful", "user_id": user['id'], "name": user['name'], "role": user['role']}), 200
+        else: return jsonify({"error": "ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง"}), 401
+    except Exception as e: return jsonify({"error": str(e)}), 500
 
-# API สร้างการจองพื้นที่ (เชื่อมกับ Booking.jsx)
 @app.route('/api/reservations', methods=['POST'])
 def create_reservation():
-    if mysql_conn is None:
-        return jsonify({"error": "Database connection failed"}), 500
     try:
         data = request.json
         user_id = data.get('user_id')
         booth_id = data.get('booth_id')
-
-        cursor = mysql_conn.cursor()
-        # 1. บันทึกข้อมูลลงตาราง Reservations
-        cursor.execute("INSERT INTO Reservations (user_id, booth_id, status) VALUES (%s, %s, 'active')", (user_id, booth_id))
-        # 2. เปลี่ยนสถานะของบูธเป็น booked
-        cursor.execute("UPDATE Booths SET status = 'booked' WHERE id = %s", (booth_id,))
         
-        mysql_conn.commit()
+        conn = mysql_pool.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO Reservations (user_id, booth_id, status) VALUES (%s, %s, 'active')", (user_id, booth_id))
+        cursor.execute("UPDATE Booths SET status = 'booked' WHERE id = %s", (booth_id,))
+        conn.commit()
         cursor.close()
+        conn.close()
         return jsonify({"message": "จองพื้นที่สำเร็จ!"}), 201
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception as e: return jsonify({"error": str(e)}), 500
 
-@app.route('/api/reservations/<int:res_id>', methods=['DELETE'])
-def delete_reservation(res_id):
-    if mysql_conn is None:
-        return jsonify({"error": "Database connection failed"}), 500
+# ==========================================
+# API ระบบจัดการลบข้อมูล (Admin) 
+# ==========================================
+@app.route('/api/admin/shops/<stall_id>', methods=['DELETE'])
+def soft_delete_shop(stall_id):
     try:
-        cursor = mysql_conn.cursor()
-        cursor.execute("UPDATE Reservations SET status = 'cancelled' WHERE id = %s", (res_id,))
-        mysql_conn.commit()
+        vendors_collection.update_one({"stallId": stall_id}, {"$set": {"status": "deleted"}})
+        conn = mysql_pool.get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT id FROM Booths WHERE booth_code = %s", (stall_id,))
+        booth = cursor.fetchone()
+        if booth:
+            booth_id = booth['id']
+            cursor.execute("UPDATE Reservations SET status = 'cancelled' WHERE booth_id = %s", (booth_id,))
+            cursor.execute("UPDATE Booths SET status = 'available' WHERE id = %s", (booth_id,))
+            conn.commit()
         cursor.close()
-        return jsonify({"message": f"ยกเลิกการจองรหัส {res_id} สำเร็จ (Soft Delete)"}), 200
-    except Exception as e:
+        conn.close()
+        return jsonify({"message": f"ซ่อนข้อมูลร้านล็อก {stall_id} สำเร็จ"}), 200
+    except Exception as e: return jsonify({"error": str(e)}), 500
+
+@app.route('/api/admin/shops', methods=['DELETE'])
+def soft_delete_all_shops():
+    try:
+        vendors_collection.update_many({}, {"$set": {"status": "deleted"}})
+        conn = mysql_pool.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE Reservations SET status = 'cancelled'")
+        cursor.execute("UPDATE Booths SET status = 'available' WHERE status = 'booked'")
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return jsonify({"message": "ซ่อนข้อมูลร้านค้าทั้งหมดสำเร็จ"}), 200
+    except Exception as e: return jsonify({"error": str(e)}), 500
+
+# 👇 เพิ่ม API ลบถาวร "ทั้งหมดรวดเดียว" (Hard Delete All Shops) 👇
+@app.route('/api/admin/shops/hard', methods=['DELETE'])
+def hard_delete_all_shops():
+    try:
+        # 1. ลบข้อมูลร้านค้าทั้งหมดใน MongoDB (ทิ้งเกลี้ยง)
+        vendors_collection.delete_many({})
+        
+        # 2. ลบรูปสลิปทั้งหมดใน MongoDB (ทิ้งเกลี้ยง)
+        slips_collection.delete_many({})
+        
+        # 3. ลบประวัติการจองและอัปเดตบูธใน MySQL
+        conn = mysql_pool.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("DELETE FROM Reservations")
+        cursor.execute("UPDATE Booths SET status = 'available'")
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({"message": "ลบข้อมูลร้านค้า สลิป และประวัติการจองทั้งหมดแบบถาวรสำเร็จ!"}), 200
+    except Exception as e: 
         return jsonify({"error": str(e)}), 500
 
-# ไม่มีความสำคัญ แต่เก็บไว้ทดสอบระบบ
-@app.route('/')
-def hello_world1():
-    return 'Hi my name is someone'
+@app.route('/api/admin/users', methods=['GET'])
+def get_all_vendors_list():
+    try:
+        conn = mysql_pool.get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT id, name, email, phone FROM Users WHERE role = 'vendor'")
+        users = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return jsonify(users), 200
+    except Exception as e: return jsonify({"error": str(e)}), 500
 
+@app.route('/api/admin/users/<int:user_id>', methods=['DELETE'])
+def hard_delete_user(user_id):
+    try:
+        conn = mysql_pool.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM Reservations WHERE user_id = %s", (user_id,))
+        cursor.execute("DELETE FROM Users WHERE id = %s AND role = 'vendor'", (user_id,))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return jsonify({"message": "ลบผู้ใช้งานสำเร็จ"}), 200
+    except Exception as e: return jsonify({"error": str(e)}), 500
+
+@app.route('/api/admin/users', methods=['DELETE'])
+def hard_delete_all_users():
+    try:
+        conn = mysql_pool.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM Reservations WHERE user_id IN (SELECT id FROM Users WHERE role = 'vendor')")
+        cursor.execute("DELETE FROM Users WHERE role = 'vendor'")
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return jsonify({"message": "ลบผู้ใช้งาน Vendor ทั้งหมดสำเร็จ"}), 200
+    except Exception as e: return jsonify({"error": str(e)}), 500
+
+# ==========================================
+# API สำหรับระบบชำระเงิน
+# ==========================================
+@app.route('/api/payments/upload/<int:res_id>', methods=['PUT'])
+def upload_slip(res_id):
+    try:
+        data = request.json
+        if not data or 'slip_image' not in data:
+            return jsonify({"error": "ไม่พบข้อมูลรูปภาพ กรุณาลองใหม่"}), 400
+            
+        slip_image = data.get('slip_image')
+        slips_collection.update_one({"reservation_id": res_id}, {"$set": {"slip_image": slip_image}}, upsert=True)
+        
+        conn = mysql_pool.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE Reservations SET payment_status = 'checking' WHERE id = %s", (res_id,))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({"message": "อัปโหลดสลิปสำเร็จ รอแอดมินตรวจสอบ"}), 200
+    except Exception as e: 
+        return jsonify({"error": f"เกิดข้อผิดพลาดในฝั่งเซิร์ฟเวอร์: {str(e)}"}), 500
+
+@app.route('/api/admin/payments', methods=['GET'])
+def get_pending_payments():
+    try:
+        conn = mysql_pool.get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT r.id as reservation_id, b.booth_code, b.price, u.name as user_name 
+            FROM Reservations r
+            JOIN Booths b ON r.booth_id = b.id
+            JOIN Users u ON r.user_id = u.id
+            WHERE r.payment_status = 'checking'
+        """)
+        payments = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        for pay in payments:
+            slip_doc = slips_collection.find_one({"reservation_id": pay['reservation_id']}, {'_id': 0, 'slip_image': 1})
+            pay['slip_image'] = slip_doc.get('slip_image', '') if slip_doc else ''
+            
+        return jsonify(payments), 200
+    except Exception as e: return jsonify({"error": str(e)}), 500
+
+@app.route('/api/admin/payments/<int:res_id>', methods=['PUT'])
+def verify_payment(res_id):
+    data = request.json
+    action = data.get('action') 
+    try:
+        conn = mysql_pool.get_connection()
+        cursor = conn.cursor()
+        if action == 'approve':
+            cursor.execute("UPDATE Reservations SET payment_status = 'paid' WHERE id = %s", (res_id,))
+        else:
+            cursor.execute("UPDATE Reservations SET payment_status = 'unpaid' WHERE id = %s", (res_id,))
+            slips_collection.delete_one({"reservation_id": res_id})
+            
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return jsonify({"message": "อัปเดตสถานะสำเร็จ"}), 200
+    except Exception as e: return jsonify({"error": str(e)}), 500
+
+# ==========================================
+# API ประวัติการจอง (History) สำหรับ Admin
+# ==========================================
+@app.route('/api/admin/history', methods=['GET'])
+def get_booking_history():
+    try:
+        conn = mysql_pool.get_connection()
+        cursor = conn.cursor(dictionary=True)
+        # ดึงประวัติทั้งหมด เรียงจากใหม่ไปเก่า
+        cursor.execute("""
+            SELECT r.id, r.booking_date, r.status as reserve_status, r.payment_status, 
+                   b.booth_code, b.price, 
+                   u.name as user_name, u.phone
+            FROM Reservations r
+            JOIN Booths b ON r.booth_id = b.id
+            JOIN Users u ON r.user_id = u.id
+            ORDER BY r.booking_date DESC
+        """)
+        history = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return jsonify(history), 200
+    except Exception as e: 
+        return jsonify({"error": str(e)}), 500
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

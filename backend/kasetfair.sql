@@ -1,12 +1,9 @@
 
--- drop database if exists kasetfair;
--- Create database kasetfair;
+drop database if exists kasetfair;
+Create database kasetfair;
 
 use kasetfair;
 
-ALTER TABLE Reservations ADD COLUMN payment_status ENUM('unpaid', 'checking', 'paid') DEFAULT 'unpaid';
-ALTER TABLE Reservations ADD COLUMN slip_image LONGTEXT;
-ALTER TABLE Reservations MODIFY COLUMN slip_image LONGTEXT;
 
 CREATE TABLE Users (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -47,3 +44,16 @@ SELECT
     3000.00 AS price,
     'available' AS status
 FROM numbers;
+
+ALTER TABLE Reservations ADD COLUMN payment_status ENUM('unpaid', 'checking', 'paid') DEFAULT 'unpaid';
+ALTER TABLE Reservations ADD COLUMN slip_image LONGTEXT;
+ALTER TABLE Reservations MODIFY COLUMN slip_image LONGTEXT;
+
+INSERT INTO Users (name, email, password_hash, phone, role) 
+VALUES (
+    'admin', 
+    'admin@gmail.com', 
+    SHA2('admin', 256), -- ใช้ SHA-256 ในการ Hash รหัสผ่านคำว่า 'admin'
+    '0861234567', 
+    'admin'
+);

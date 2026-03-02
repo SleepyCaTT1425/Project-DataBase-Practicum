@@ -21,6 +21,8 @@ function MyShop() {
   const [shops, setShops] = useState([]);
   const [error, setError] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
+  const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', message: '', isSuccess: false, onConfirm: null });
+  const closeConfirmDialog = () => setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null });
 
   const fetchMyShop = async () => {
     const userId = localStorage.getItem('userId');
@@ -103,17 +105,31 @@ function MyShop() {
 
   const handleSubmitSlip = async (shopIdx) => {
     const shop = shops[shopIdx];
-    if (!shop.uploadingSlip) return alert('กรุณาเลือกไฟล์สลิปก่อนส่งครับ');
+    if (!shop.uploadingSlip) {
+      setConfirmDialog({ isOpen: true, title: '❌ แจ้งเตือน', message: 'กรุณาเลือกไฟล์สลิปก่อนส่งครับ', isSuccess: false, onConfirm: closeConfirmDialog });
+      return;
+    }
     try {
       const resp = await fetch(`http://localhost:5000/api/payments/upload/${shop.reservationId}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slip_image: shop.uploadingSlip })
       });
       let data;
-      try { data = await resp.json(); } catch (err) { alert('เกิดข้อผิดพลาด: ไฟล์รูปภาพสลิปอาจจะมีขนาดใหญ่เกินไปครับ'); return; }
+      try { data = await resp.json(); } catch (err) { 
+        setConfirmDialog({ isOpen: true, title: '❌ ข้อผิดพลาด', message: 'ไฟล์รูปภาพสลิปอาจจะมีขนาดใหญ่เกินไปครับ', isSuccess: false, onConfirm: closeConfirmDialog });
+        return; 
+      }
 
-      if (resp.ok) { alert('ส่งสลิปเรียบร้อย! โปรดรอแอดมินตรวจสอบ'); fetchMyShop(); }
-      else { alert(`เกิดข้อผิดพลาด: ${data.error || 'ไม่ทราบสาเหตุแน่ชัด'}`); }
-    } catch (e) { alert('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ โปรดตรวจสอบว่ารันไฟล์ main.py อยู่หรือไม่'); }
+      if (resp.ok) { 
+        setConfirmDialog({ 
+          isOpen: true, title: '✅ ส่งสลิปสำเร็จ!', message: 'ส่งสลิปเรียบร้อย! โปรดรอแอดมินตรวจสอบ', isSuccess: true, 
+          onConfirm: () => { closeConfirmDialog(); fetchMyShop(); } 
+        });
+      } else { 
+        setConfirmDialog({ isOpen: true, title: '❌ ข้อผิดพลาด', message: `เกิดข้อผิดพลาด: ${data.error || 'ไม่ทราบสาเหตุแน่ชัด'}`, isSuccess: false, onConfirm: closeConfirmDialog });
+      }
+    } catch (e) { 
+      setConfirmDialog({ isOpen: true, title: '❌ ข้อผิดพลาด', message: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ โปรดตรวจสอบว่ารันไฟล์ main.py อยู่หรือไม่', isSuccess: false, onConfirm: closeConfirmDialog });
+    }
   };
 
   return (
@@ -263,6 +279,18 @@ function MyShop() {
           </div>
         </div>
       ))}
+      {/* 👇 MODAL แจ้งเตือนสำหรับหน้า MyShop 👇 */}
+      {confirmDialog.isOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999 }}>
+          <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '12px', width: '90%', maxWidth: '400px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)', textAlign: 'center' }}>
+            <h3 style={{ margin: '0 0 15px 0', color: confirmDialog.isSuccess ? '#27ae60' : '#e74c3c', fontSize: '22px' }}>{confirmDialog.title}</h3>
+            <p style={{ color: '#555', fontSize: '16px', lineHeight: '1.6', whiteSpace: 'pre-line', marginBottom: '25px' }}>{confirmDialog.message}</p>
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <button onClick={confirmDialog.onConfirm} style={{ padding: '12px 20px', backgroundColor: confirmDialog.isSuccess ? '#3498db' : '#e74c3c', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '16px', flex: 1 }}>ตกลง</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

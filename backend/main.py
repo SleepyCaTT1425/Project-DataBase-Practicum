@@ -362,14 +362,42 @@ def get_all_vendors_list():
 def hard_delete_user(user_id):
     try:
         conn = mysql_pool.get_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(dictionary=True)
+        
+        # 1. ค้นหาประวัติการจองทั้งหมดของ User คนนี้
+        cursor.execute("SELECT id as reservation_id, booth_id FROM Reservations WHERE user_id = %s", (user_id,))
+        reservations = cursor.fetchall()
+        
+        for res in reservations:
+            res_id = res['reservation_id']
+            booth_id = res['booth_id']
+            
+            # 2. ลบสลิปที่เกี่ยวข้องกับการจองนี้ทิ้งจาก MongoDB
+            slips_collection.delete_many({"reservation_id": res_id})
+            
+            # 3. หา booth_code เพื่อไปตามลบข้อมูลหน้าร้าน (Vendor)
+            cursor.execute("SELECT booth_code FROM Booths WHERE id = %s", (booth_id,))
+            booth = cursor.fetchone()
+            if booth:
+                booth_code = booth['booth_code']
+                # ลบร้านค้านี้ทิ้งจาก MongoDB
+                vendors_collection.delete_many({"stallId": booth_code})
+                
+                # 4. คืนสถานะล็อกบูธให้กลับมา "ว่าง" เหมือนเดิม
+                cursor.execute("UPDATE Booths SET status = 'available' WHERE id = %s", (booth_id,))
+                
+        # 5. ลบประวัติการจองใน MySQL
         cursor.execute("DELETE FROM Reservations WHERE user_id = %s", (user_id,))
+        
+        # 6. ลบบัญชีผู้ใช้งานใน MySQL
         cursor.execute("DELETE FROM Users WHERE id = %s AND role = 'vendor'", (user_id,))
+        
         conn.commit()
         cursor.close()
         conn.close()
-        return jsonify({"message": "ลบผู้ใช้งานสำเร็จ"}), 200
-    except Exception as e: return jsonify({"error": str(e)}), 500
+        return jsonify({"message": "ลบผู้ใช้งานและเคลียร์ข้อมูลร้านค้าที่เกี่ยวข้องสำเร็จ"}), 200
+    except Exception as e: 
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/admin/users', methods=['DELETE'])
 def hard_delete_all_users():

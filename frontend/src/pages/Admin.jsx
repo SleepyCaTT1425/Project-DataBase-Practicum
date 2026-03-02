@@ -77,10 +77,10 @@ function Admin() {
   };
 
   const handleSoftDeleteShop = (stallId) => {
-    setConfirmDialog({ isOpen: true, title: 'ยืนยันการลบข้อมูลร้านค้า', message: `คุณยืนยันที่จะ "ลบข้อมูลร้านค้าล็อก ${stallId}" ใช่หรือไม่?`, confirmText: 'ลบข้อมูล', isAlertOnly: false, onConfirm: async () => { try { await fetch(`http://localhost:5000/api/admin/shops/${stallId}`, { method: 'DELETE' }); fetchData(); showSuccessAlert('ลบข้อมูลร้านค้าสำเร็จ!'); } catch (error) { showErrorAlert('เกิดข้อผิดพลาดในการลบ'); } }});
+    setConfirmDialog({ isOpen: true, title: 'ยืนยันการซ่อนข้อมูลร้านค้า', message: `คุณยืนยันที่จะ "ซ่อนข้อมูลร้านค้าล็อก ${stallId}" ใช่หรือไม่?`, confirmText: 'ซ่อนข้อมูล', isAlertOnly: false, onConfirm: async () => { try { await fetch(`http://localhost:5000/api/admin/shops/${stallId}`, { method: 'DELETE' }); fetchData(); showSuccessAlert('ซ่อนข้อมูลร้านค้าสำเร็จ!'); } catch (error) { showErrorAlert('เกิดข้อผิดพลาดในการซ่อน'); } }});
   };
   const handleSoftDeleteAllShops = () => {
-    setConfirmDialog({ isOpen: true, title: '🚨 คำเตือน! ยืนยันการลบทุกล็อก', message: `คุณยืนยันที่จะ "ลบข้อมูลร้านค้าทุกล็อก" ใช่หรือไม่?`, confirmText: 'ลบร้านค้าทั้งหมด', isAlertOnly: false, onConfirm: async () => { try { await fetch(`http://localhost:5000/api/admin/shops`, { method: 'DELETE' }); fetchData(); showSuccessAlert('เคลียร์ข้อมูลร้านค้าทั้งหมดสำเร็จ!'); } catch (error) { showErrorAlert('เกิดข้อผิดพลาดในการลบ'); } }});
+    setConfirmDialog({ isOpen: true, title: '🚨 ยืนยันการซ่อนทุกล็อก', message: `คุณยืนยันที่จะ "ซ่อนข้อมูลร้านค้าทุกล็อก" ใช่หรือไม่?`, confirmText: 'ซ่อนร้านค้าทั้งหมด', isAlertOnly: false, onConfirm: async () => { try { await fetch(`http://localhost:5000/api/admin/shops`, { method: 'DELETE' }); fetchData(); showSuccessAlert('เคลียร์ข้อมูลร้านค้าทั้งหมดสำเร็จ!'); } catch (error) { showErrorAlert('เกิดข้อผิดพลาดในการซ่อน'); } }});
   };
   // เอาไปวางต่อจากฟังก์ชันลบต่างๆ
   const handleHardDeleteAllShops = () => {
@@ -142,12 +142,6 @@ function Admin() {
   return (
     <div style={{ padding: '20px', fontFamily: 'sans-serif', maxWidth: '1100px', margin: '0 auto', position: 'relative' }}>
       <h2 style={{ borderBottom: '2px solid #2c3e50', paddingBottom: '10px' }}>👑 Admin Dashboard</h2>
-      
-      {activeTab !== 'deleteManage' && activeTab !== 'payments' && (
-        <div style={{ marginBottom: '20px' }}>
-          <input type="text" placeholder={activeTab === 'booths' ? "🔍 ค้นหารหัสล็อก... (เช่น E01)" : "🔍 ค้นหาชื่อร้าน หรือ เลขล็อก..."} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '2px solid #3498db', fontSize: '16px' }} />
-        </div>
-      )}
 
       {/* เมนูแท็บ */}
       <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
@@ -393,25 +387,36 @@ function Admin() {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999 }}>
           <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '12px', width: '90%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3 style={{ margin: 0 }}>✏️ แก้ไขร้าน: ล็อก {editingVendor.stallId}</h3>
+              <h3 style={{ margin: 0 }}>✏️ แก้ไขร้าน: ล็อก {editingVendor?.stallId}</h3>
               <button onClick={() => setEditingVendor(null)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}>✖</button>
             </div>
             
             <div style={{ marginBottom: '15px' }}>
               <label style={{ fontWeight: 'bold' }}>ชื่อร้าน</label>
-              <input type="text" value={editingVendor.shopName} onChange={e => handleVendorFieldChange('shopName', e.target.value)} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
+              <input type="text" value={editingVendor?.shopName || ''} onChange={e => handleVendorFieldChange('shopName', e.target.value)} style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
             </div>
             
             <div style={{ marginBottom: '15px' }}>
-              <label style={{ fontWeight: 'bold' }}>URL รูปภาพหน้าร้าน</label>
-              <input type="text" value={editingVendor.image} onChange={e => handleVendorFieldChange('image', e.target.value)} placeholder="https://example.com/photo.jpg" style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
+              <label style={{ fontWeight: 'bold' }}>รูปภาพหน้าร้าน (อัปโหลดไฟล์ หรือใส่ URL)</label>
+              <input type="text" value={editingVendor?.image || ''} onChange={e => handleVendorFieldChange('image', e.target.value)} placeholder="URL รูปภาพ หรืออัปโหลดไฟล์ด้านล่าง..." style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '6px', border: '1px solid #ccc', boxSizing: 'border-box', marginBottom: '8px' }} />
+              {/* ปุ่มเลือกไฟล์รูปภาพ */}
+              <input type="file" accept="image/*" onChange={e => {
+                const file = e.target.files && e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = ev => handleVendorFieldChange('image', ev.target.result);
+                reader.readAsDataURL(file);
+              }} style={{ width: '100%', fontSize: '13px', padding: '8px', border: '1px dashed #3498db', borderRadius: '6px', backgroundColor: '#f4f9fd' }} />
+              
+              {/* แสดงรูปตัวอย่างถ้ารูปมีค่า */}
+              {editingVendor?.image && <img src={editingVendor.image} alt="preview" style={{ width: '100%', maxWidth: '150px', maxHeight: '150px', objectFit: 'cover', marginTop: '10px', borderRadius: '8px', border: '1px solid #ddd', display: 'block' }}/>}
             </div>
             
             <div style={{ marginBottom: '15px' }}>
               <label style={{ fontWeight: 'bold' }}>หมวดหมู่ (เลือกได้หลายหมวด)</label><br />
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '8px' }}>
                 {CATEGORY_OPTIONS.map(cat => {
-                  const isChecked = editingVendor.categories.includes(cat.label);
+                  const isChecked = (editingVendor?.categories || []).includes(cat.label);
                   return (
                     <label key={cat.id} style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', backgroundColor: '#f9f9f9', padding: '5px 10px', borderRadius: '4px', border: '1px solid #eee' }}>
                       <input type="checkbox" checked={isChecked} onChange={() => handleVendorCategoryToggle(cat.id)} style={{ cursor: 'pointer' }}/>
@@ -424,7 +429,7 @@ function Admin() {
 
             <div style={{ borderTop: '1px solid #eee', paddingTop: '15px', marginTop: '15px' }}>
               <h4 style={{ margin: '0 0 10px 0' }}>จัดการเมนูอาหาร</h4>
-              {editingVendor.menus.map((item, index) => (
+              {(editingVendor?.menus || []).map((item, index) => (
                 <div key={index} style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
                   <input type="text" placeholder="ชื่อเมนู" value={item.name} onChange={e => handleVendorMenuChange(index, 'name', e.target.value)} style={{ flex: 2, padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
                   <input type="number" placeholder="ราคา" value={item.price} onChange={e => handleVendorMenuChange(index, 'price', e.target.value)} style={{ flex: 1, padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
@@ -442,6 +447,7 @@ function Admin() {
           </div>
         </div>
       )}
+
     </div>
   );
 }

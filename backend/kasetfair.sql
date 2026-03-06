@@ -53,7 +53,7 @@ INSERT INTO Users (name, email, password_hash, phone, role)
 VALUES (
     'admin', 
     'admin@gmail.com', 
-    SHA2('admin', 256), -- ใช้ SHA-256 ในการ Hash รหัสผ่านคำว่า 'admin'
+    'scrypt:32768:8:1$ii4lyxBzwU4HpcTz$6625d1b55b8a28f06f6235ce957d2a22420eb25b67ad42fbf8d4b615755ad76423439acb3d119a4131e289890c4d48b6f1fcb0b7be3762d65374e259e937b3e0', -- Hash รหัสผ่าน 'admin' สร้างโดย werkzeug.security
     '0861234567', 
     'admin'
 );

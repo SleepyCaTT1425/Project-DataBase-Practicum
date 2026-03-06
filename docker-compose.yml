@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: kasetfair_db
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: kasetfair
+      MYSQL_USER: USER
+      MYSQL_PASSWORD: PASSWORD
+    volumes:
+      - ./backend/kasetfair.sql:/docker-entrypoint-initdb.d/kasetfair.sql
+    restart: always
+
+  mongo:
+    image: mongo:latest
+    container_name: kasetfair_mongo
+    restart: always
+
+  backend:
+    build:
+      context: ./backend
+    container_name: kasetfair_backend
+    ports:
+      - "5000:5000"
+    environment:
+      DB_HOST: db
+      DB_USER: USER
+      DB_PASSWORD: PASSWORD
+      DB_NAME: kasetfair
+      MONGO_URI: mongodb://mongo:27017/
+      PROMPTPAY_PHONE: "0637961693"
+      PAYMENT_TIMEOUT_MINUTES: "2"
+    depends_on:
+      - db
+      - mongo
+    restart: always
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: kasetfair_frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    restart: always

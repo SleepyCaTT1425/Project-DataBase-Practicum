@@ -43,17 +43,27 @@ dbconfig = {
     "database": DB_NAME
 }
 
-try:
-    mysql_pool = pooling.MySQLConnectionPool(
-        pool_name="kasetfair_pool",
-        pool_size=10,
-        pool_reset_session=True,
-        **dbconfig
-    )
-except mysql.connector.Error as err:
-    print(f"Error creating connection pool: {err}")
+import time
+mysql_pool = None
+for i in range(10):
+    try:
+        mysql_pool = pooling.MySQLConnectionPool(
+            pool_name="kasetfair_pool",
+            pool_size=10,
+            pool_reset_session=True,
+            **dbconfig
+        )
+        print("Successfully connected to MySQL database!")
+        break
+    except mysql.connector.Error as err:
+        print(f"Error creating connection pool (Attempt {i+1}/10): {err}")
+        time.sleep(5)
+if not mysql_pool:
+    print("Could not connect to MySQL after 10 attempts. Exiting.")
+    sys.exit(1)
 
-mongo_client = MongoClient("mongodb://localhost:27017/")
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+mongo_client = MongoClient(MONGO_URI)
 mongo_db = mongo_client[DB_NAME]
 vendors_collection = mongo_db["Vendor_Details"]
 slips_collection = mongo_db["Payment_Slips"]
@@ -191,7 +201,7 @@ def get_myshop(user_id):
             
             if booth:
                 booth_code = booth.get('booth_code')
-                booth_price = booth.get('price')
+                booth_price = float(booth.get('price', 0))
 
             vendor = vendors_collection.find_one({"stallId": booth_code}, {'_id': 0}) if booth_code else None
             slip_doc = slips_collection.find_one({"reservation_id": res_id}, {'_id': 0, 'slip_image': 1})

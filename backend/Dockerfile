@@ -7,7 +7,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install python-dotenv flask-cors mysql-connector-python pymongo
 
-COPY . .
+COPY backend/ .
 
 ENV FLASK_APP=main.py
 ENV FLASK_ENV=development

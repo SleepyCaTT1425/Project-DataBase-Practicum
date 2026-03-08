@@ -6,7 +6,8 @@ This project consists of a Flask backend, a React (Vite) frontend, and databases
 If you have **Docker Desktop** installed, you can start the entire system (Frontend, Backend, and Databases) with a single command:
 
 1. edit .env file Username and Password to your MYSQL.
-2. Double-click `Start.bat` in the project root.
+2. edit PROMPTPAY_PHONE and PAYMENT_TIMEOUT_MINUTES in docker-compose.yml
+3. Double-click `Start.bat` in the project root.
    - Or run it via terminal: `.\Start.bat`
 
 This will automatically build and start all necessary services using Docker Compose.

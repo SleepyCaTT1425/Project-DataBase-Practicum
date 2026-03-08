@@ -1,6 +1,6 @@
 
-drop database if exists kasetfair;
-Create database kasetfair;
+-- drop database if exists kasetfair;
+-- Create database kasetfair;
 
 use kasetfair;
 

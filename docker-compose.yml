@@ -31,8 +31,8 @@ services:
       DB_PASSWORD: PASSWORD
       DB_NAME: kasetfair
       MONGO_URI: mongodb://mongo:27017/
-      PROMPTPAY_PHONE: "0637961693"
-      PAYMENT_TIMEOUT_MINUTES: "2"
+      PROMPTPAY_PHONE: "081XXXXXXX" # เปลี่ยนเป็นเบอร์ PROMPTPAY ของคุณ
+      PAYMENT_TIMEOUT_MINUTES: "5" #ปรับระยะเวลาตามต้องการ
     depends_on:
       - db
       - mongo

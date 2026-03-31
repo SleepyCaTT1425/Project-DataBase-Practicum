@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { buildings, initialStalls as stalls } from '../data/mapData';
 import { buildingInfo } from '../data/mockData';
+import { API_URL } from '../config';
 
 const getPolygonCenter = (pointsStr) => {
   const parts = pointsStr.trim().split(/\s+/);
@@ -30,7 +31,7 @@ function Home() {
   useEffect(() => {
     const fetchVendors = async () => {
       try {
-        const response = await fetch('http://localhost:5000/api/vendors');
+        const response = await fetch(`${API_URL}/api/vendors`);
         const data = await response.json(); 
 
         if (response.ok) {

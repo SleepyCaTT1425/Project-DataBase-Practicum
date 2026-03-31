@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { API_URL } from '../config';
 
 const CATEGORY_OPTIONS = [
   { id: 'dessert', label: 'ของหวาน' },
@@ -27,7 +28,7 @@ function MyShop() {
   const fetchMyShop = async () => {
     const userId = localStorage.getItem('userId');
     try {
-      const resp = await fetch(`http://localhost:5000/api/myshop/${userId}`);
+      const resp = await fetch(`${API_URL}/api/myshop/${userId}`);
       const data = await resp.json();
       if (resp.ok) {
         const loaded = (data.shops || []).map(s => {
@@ -95,7 +96,7 @@ function MyShop() {
     const menusArr = shop.menus.map(m => ({ name: m.name, price: Number(m.price) }));
     const payload = { stallId: shop.boothCode, shopName: shop.shopName, image: shop.image, categories: catsArray, menus: menusArr };
     try {
-      const url = shop.vendor ? `http://localhost:5000/api/vendors/${shop.boothCode}` : 'http://localhost:5000/api/vendors';
+      const url = shop.vendor ? `${API_URL}/api/vendors/${shop.boothCode}` : `${API_URL}/api/vendors`;
       const method = shop.vendor ? 'PUT' : 'POST';
       const resp = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (resp.ok) { setSaveMessage('บันทึกข้อมูลร้านสำเร็จ!'); setTimeout(() => setSaveMessage(''), 3000); fetchMyShop(); } 
@@ -110,7 +111,7 @@ function MyShop() {
       return;
     }
     try {
-      const resp = await fetch(`http://localhost:5000/api/payments/upload/${shop.reservationId}`, {
+      const resp = await fetch(`${API_URL}/api/payments/upload/${shop.reservationId}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slip_image: shop.uploadingSlip })
       });
       let data;

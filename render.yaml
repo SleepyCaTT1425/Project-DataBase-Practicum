@@ -1,0 +1,36 @@
+services:
+  # Backend Flask API
+  - type: web
+    name: kasetfair-backend
+    runtime: docker
+    dockerfilePath: backend/Dockerfile
+    dockerContext: .
+    envVars:
+      - key: DB_HOST
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_NAME
+        value: kasetfair
+      - key: MONGO_URI
+        sync: false
+      - key: PROMPTPAY_PHONE
+        sync: false
+      - key: PAYMENT_TIMEOUT_MINUTES
+        value: "10"
+
+  # Frontend React (static site)
+  - type: web
+    name: kasetfair-frontend
+    runtime: static
+    buildCommand: cd frontend && npm install && npm install promptpay-qr qrcode.react && npm run build
+    staticPublishPath: frontend/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        sync: false

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { API_URL } from '../config';
 
 const CATEGORY_OPTIONS = [{ id: 'dessert', label: 'ของหวาน' }, { id: 'drink', label: 'เครื่องดื่ม' }, { id: 'single', label: 'อาหารจานเดียว' }, { id: 'snack', label: 'ของทานเล่น' }, { id: 'other', label: 'อื่นๆ' }];
 
@@ -27,11 +28,11 @@ function Admin() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const boothResp = await fetch('http://localhost:5000/api/booths');
-      const vendorResp = await fetch('http://localhost:5000/api/vendors');
-      const userResp = await fetch('http://localhost:5000/api/admin/users'); 
-      const payResp = await fetch('http://localhost:5000/api/admin/payments'); 
-      const historyResp = await fetch('http://localhost:5000/api/admin/history');
+      const boothResp = await fetch(`${API_URL}/api/booths`);
+      const vendorResp = await fetch(`${API_URL}/api/vendors`);
+      const userResp = await fetch(`${API_URL}/api/admin/users`); 
+      const payResp = await fetch(`${API_URL}/api/admin/payments`); 
+      const historyResp = await fetch(`${API_URL}/api/admin/history`);
       
       if (boothResp.ok) setBooths(await boothResp.json());
       if (vendorResp.ok) setVendors(await vendorResp.json());
@@ -49,7 +50,7 @@ function Admin() {
   const toggleBoothStatus = async (boothId, currentStatus) => {
     if (currentStatus === 'booked') return;
     const newStatus = currentStatus === 'available' ? 'pending' : 'available';
-    try { await fetch(`http://localhost:5000/api/booths/${boothId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus }) }); fetchData(); } 
+    try { await fetch(`${API_URL}/api/booths/${boothId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus }) }); fetchData(); } 
     catch (error) { showErrorAlert('แก้สถานะไม่สำเร็จ'); }
   };
 
@@ -57,7 +58,7 @@ function Admin() {
     const newPrice = editingPrice[boothId];
     if (!newPrice || isNaN(newPrice)) return showErrorAlert('กรุณากรอกราคาเป็นตัวเลขครับ');
     try {
-      const resp = await fetch(`http://localhost:5000/api/booths/${boothId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ price: parseFloat(newPrice) }) });
+      const resp = await fetch(`${API_URL}/api/booths/${boothId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ price: parseFloat(newPrice) }) });
       if (resp.ok) { showSuccessAlert('อัปเดตราคาสำเร็จ!'); setEditingPrice(prev => ({ ...prev, [boothId]: '' })); fetchData(); }
     } catch (error) { showErrorAlert('แก้ราคาไม่สำเร็จ'); }
   };
@@ -69,7 +70,7 @@ function Admin() {
       isOpen: true, title: 'ตรวจสอบการชำระเงิน', message: `คุณแน่ใจหรือไม่ที่จะ "${actionText}" สลิปการชำระเงินนี้?`, confirmText: actionText, isAlertOnly: false,
       onConfirm: async () => {
         try {
-          await fetch(`http://localhost:5000/api/admin/payments/${resId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }) });
+          await fetch(`${API_URL}/api/admin/payments/${resId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }) });
           fetchData(); showSuccessAlert(`ดำเนินการ ${actionText} เรียบร้อยแล้ว`);
         } catch (error) { showErrorAlert('เกิดข้อผิดพลาด'); }
       }
@@ -77,10 +78,10 @@ function Admin() {
   };
 
   const handleSoftDeleteShop = (stallId) => {
-    setConfirmDialog({ isOpen: true, title: 'ยืนยันการซ่อนข้อมูลร้านค้า', message: `คุณยืนยันที่จะ "ซ่อนข้อมูลร้านค้าล็อก ${stallId}" ใช่หรือไม่?`, confirmText: 'ซ่อนข้อมูล', isAlertOnly: false, onConfirm: async () => { try { await fetch(`http://localhost:5000/api/admin/shops/${stallId}`, { method: 'DELETE' }); fetchData(); showSuccessAlert('ซ่อนข้อมูลร้านค้าสำเร็จ!'); } catch (error) { showErrorAlert('เกิดข้อผิดพลาดในการซ่อน'); } }});
+    setConfirmDialog({ isOpen: true, title: 'ยืนยันการซ่อนข้อมูลร้านค้า', message: `คุณยืนยันที่จะ "ซ่อนข้อมูลร้านค้าล็อก ${stallId}" ใช่หรือไม่?`, confirmText: 'ซ่อนข้อมูล', isAlertOnly: false, onConfirm: async () => { try { await fetch(`${API_URL}/api/admin/shops/${stallId}`, { method: 'DELETE' }); fetchData(); showSuccessAlert('ซ่อนข้อมูลร้านค้าสำเร็จ!'); } catch (error) { showErrorAlert('เกิดข้อผิดพลาดในการซ่อน'); } }});
   };
   const handleSoftDeleteAllShops = () => {
-    setConfirmDialog({ isOpen: true, title: '🚨 ยืนยันการซ่อนทุกล็อก', message: `คุณยืนยันที่จะ "ซ่อนข้อมูลร้านค้าทุกล็อก" ใช่หรือไม่?`, confirmText: 'ซ่อนร้านค้าทั้งหมด', isAlertOnly: false, onConfirm: async () => { try { await fetch(`http://localhost:5000/api/admin/shops`, { method: 'DELETE' }); fetchData(); showSuccessAlert('เคลียร์ข้อมูลร้านค้าทั้งหมดสำเร็จ!'); } catch (error) { showErrorAlert('เกิดข้อผิดพลาดในการซ่อน'); } }});
+    setConfirmDialog({ isOpen: true, title: '🚨 ยืนยันการซ่อนทุกล็อก', message: `คุณยืนยันที่จะ "ซ่อนข้อมูลร้านค้าทุกล็อก" ใช่หรือไม่?`, confirmText: 'ซ่อนร้านค้าทั้งหมด', isAlertOnly: false, onConfirm: async () => { try { await fetch(`${API_URL}/api/admin/shops`, { method: 'DELETE' }); fetchData(); showSuccessAlert('เคลียร์ข้อมูลร้านค้าทั้งหมดสำเร็จ!'); } catch (error) { showErrorAlert('เกิดข้อผิดพลาดในการซ่อน'); } }});
   };
   // เอาไปวางต่อจากฟังก์ชันลบต่างๆ
   const handleHardDeleteAllShops = () => {
@@ -92,7 +93,7 @@ function Admin() {
       isAlertOnly: false, 
       onConfirm: async () => { 
         try { 
-          await fetch(`http://localhost:5000/api/admin/shops/hard`, { method: 'DELETE' }); 
+          await fetch(`${API_URL}/api/admin/shops/hard`, { method: 'DELETE' }); 
           fetchData(); 
           showSuccessAlert('ล้างข้อมูลร้านค้าทั้งหมดแบบถาวรสำเร็จ!'); 
         } catch (error) { 
@@ -102,10 +103,10 @@ function Admin() {
     });
   };
   const handleHardDeleteUser = (userId, userName) => {
-    setConfirmDialog({ isOpen: true, title: '🧨 คำเตือน! ยืนยันการลบบัญชี', message: `คุณยืนยันที่จะ "ลบบัญชีผู้ใช้: ${userName}" ใช่หรือไม่?`, confirmText: 'ลบบัญชีผู้ใช้งาน', isAlertOnly: false, onConfirm: async () => { try { await fetch(`http://localhost:5000/api/admin/users/${userId}`, { method: 'DELETE' }); fetchData(); showSuccessAlert('ลบบัญชีผู้ใช้งานสำเร็จ!'); } catch (error) { showErrorAlert('เกิดข้อผิดพลาดในการลบ'); } }});
+    setConfirmDialog({ isOpen: true, title: '🧨 คำเตือน! ยืนยันการลบบัญชี', message: `คุณยืนยันที่จะ "ลบบัญชีผู้ใช้: ${userName}" ใช่หรือไม่?`, confirmText: 'ลบบัญชีผู้ใช้งาน', isAlertOnly: false, onConfirm: async () => { try { await fetch(`${API_URL}/api/admin/users/${userId}`, { method: 'DELETE' }); fetchData(); showSuccessAlert('ลบบัญชีผู้ใช้งานสำเร็จ!'); } catch (error) { showErrorAlert('เกิดข้อผิดพลาดในการลบ'); } }});
   };
   const handleHardDeleteAllUsers = () => {
-    setConfirmDialog({ isOpen: true, title: '☢️ ยืนยันการลบ Vendor ทั้งหมด', message: `คุณยืนยันที่จะ "ลบบัญชี Vendor ทั้งหมด" ใช่หรือไม่?`, confirmText: 'ลบ Vendor ทั้งหมด', isAlertOnly: false, onConfirm: async () => { try { await fetch(`http://localhost:5000/api/admin/users`, { method: 'DELETE' }); fetchData(); showSuccessAlert('ลบบัญชี Vendor ทั้งหมดสำเร็จ!'); } catch (error) { showErrorAlert('เกิดข้อผิดพลาดในการลบ'); } }});
+    setConfirmDialog({ isOpen: true, title: '☢️ ยืนยันการลบ Vendor ทั้งหมด', message: `คุณยืนยันที่จะ "ลบบัญชี Vendor ทั้งหมด" ใช่หรือไม่?`, confirmText: 'ลบ Vendor ทั้งหมด', isAlertOnly: false, onConfirm: async () => { try { await fetch(`${API_URL}/api/admin/users`, { method: 'DELETE' }); fetchData(); showSuccessAlert('ลบบัญชี Vendor ทั้งหมดสำเร็จ!'); } catch (error) { showErrorAlert('เกิดข้อผิดพลาดในการลบ'); } }});
   };
 
   const handleEditVendorClick = (vendor) => {
@@ -123,7 +124,7 @@ function Admin() {
     try {
       const menusArr = editingVendor.menus.map(m => ({ name: m.name, price: Number(m.price) }));
       const payload = { ...editingVendor, menus: menusArr };
-      const resp = await fetch(`http://localhost:5000/api/vendors/${editingVendor.stallId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const resp = await fetch(`${API_URL}/api/vendors/${editingVendor.stallId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (resp.ok) { showSuccessAlert(`อัปเดตข้อมูลร้านสำเร็จ!`); setEditingVendor(null); fetchData(); } else { showErrorAlert('เกิดข้อผิดพลาดในการบันทึกข้อมูล'); }
     } catch (error) { showErrorAlert('ไม่สามารถติดต่อเซิร์ฟเวอร์ได้'); }
   };

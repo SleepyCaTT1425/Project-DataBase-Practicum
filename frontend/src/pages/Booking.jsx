@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 
 import { buildings, initialStalls } from '../data/mapData';
 import { buildingInfo } from '../data/mockData';
+import { API_URL } from '../config';
 
 const getPolygonCenter = (pointsStr) => {
   const parts = pointsStr.trim().split(/\s+/);
@@ -34,7 +35,7 @@ function Booking({ isLoggedIn }) {
   useEffect(() => {
     const fetchBooths = async () => {
       try {
-        const response = await fetch('http://localhost:5000/api/booths');
+        const response = await fetch(`${API_URL}/api/booths`);
         const data = await response.json();
 
         if (response.ok) {
@@ -82,7 +83,7 @@ function Booking({ isLoggedIn }) {
     const currentUserId = localStorage.getItem('userId');
 
     try {
-      const response = await fetch('http://localhost:5000/api/reservations', {
+      const response = await fetch(`${API_URL}/api/reservations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: currentUserId, booth_id: selectedStall.db_id }),
@@ -93,7 +94,7 @@ function Booking({ isLoggedIn }) {
       if (response.ok) {
         const vendorData = { stallId: selectedStall.id, shopName: shopName, image: "", categories: [""], menus: [] };
 
-        await fetch('http://localhost:5000/api/vendors', {
+        await fetch(`${API_URL}/api/vendors`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(vendorData),
@@ -104,7 +105,7 @@ function Booking({ isLoggedIn }) {
           setShopName(''); 
           
           try {
-            const refreshResp = await fetch('http://localhost:5000/api/booths');
+            const refreshResp = await fetch(`${API_URL}/api/booths`);
             if (refreshResp.ok) {
               const freshData = await refreshResp.json();
               const updatedStalls = initialStalls.map(stall => {

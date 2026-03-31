@@ -1,17 +1,24 @@
 import os
-from dotenv import load_dotenv # 👇 นำเข้าไลบรารีสำหรับอ่าน .env
-from flask import Flask, request, jsonify
-from flask_cors import CORS 
+from dotenv import load_dotenv
+from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
 import mysql.connector
 from mysql.connector import pooling
 from pymongo import MongoClient
-from werkzeug.security import generate_password_hash, check_password_hash 
+from werkzeug.security import generate_password_hash, check_password_hash
 import subprocess
 import sys
 from datetime import datetime
 
-# 👇 โหลดค่าจากไฟล์ .env 👇
+# โหลดค่าจากไฟล์ .env
 load_dotenv()
+
+# โหลด local_config.py (ถ้ามี) สำหรับ production credentials
+try:
+    from local_config import *
+    print("Loaded local_config.py")
+except ImportError:
+    pass
 
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_USER = os.getenv("DB_USER", "root")
@@ -20,10 +27,15 @@ DB_NAME = os.getenv("DB_NAME", "kasetfair")
 PROMPTPAY_PHONE = os.getenv("PROMPTPAY_PHONE", "0801112222")
 PAYMENT_TIMEOUT_MINUTES = int(os.getenv("PAYMENT_TIMEOUT_MINUTES", 10))
 
-app = Flask(__name__)
-CORS(app) 
+# Flask app - serve frontend static files if they exist
+STATIC_DIR = os.path.join(os.path.dirname(__file__), 'frontend-static')
+if os.path.exists(STATIC_DIR):
+    app = Flask(__name__, static_folder=STATIC_DIR, static_url_path='')
+else:
+    app = Flask(__name__)
+CORS(app)
 
-app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 
 def ensure_mysql_running(service_name="MySQL80"):
     if sys.platform.startswith("win"):
@@ -31,7 +43,8 @@ def ensure_mysql_running(service_name="MySQL80"):
             subprocess.run(["net", "start", service_name], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except subprocess.CalledProcessError: pass
 
-ensure_mysql_running()
+if sys.platform.startswith("win"):
+    ensure_mysql_running()
 
 # ==========================================
 # 🌟 ระบบ Connection Pool (ดึงรหัสจาก .env)
@@ -63,8 +76,9 @@ if not mysql_pool:
     sys.exit(1)
 
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", DB_NAME)
 mongo_client = MongoClient(MONGO_URI)
-mongo_db = mongo_client[DB_NAME]
+mongo_db = mongo_client[MONGO_DB_NAME]
 vendors_collection = mongo_db["Vendor_Details"]
 slips_collection = mongo_db["Payment_Slips"]
 
@@ -191,14 +205,18 @@ def get_myshop(user_id):
         shops = []
         timeout_seconds = PAYMENT_TIMEOUT_MINUTES * 60 # แปลงนาทีเป็นวินาที
 
+        # ใช้เวลาจาก MySQL server แทน local time เพื่อป้องกัน timezone ไม่ตรง
+        cursor.execute("SELECT NOW() as server_now")
+        server_now = cursor.fetchone()['server_now']
+
         for reservation in reservations:
             booth_code = None
             booth_price = 0
             res_id = reservation['id']
-            
+
             cursor.execute("SELECT booth_code, price FROM Booths WHERE id = %s", (reservation['booth_id'],))
             booth = cursor.fetchone()
-            
+
             if booth:
                 booth_code = booth.get('booth_code')
                 booth_price = float(booth.get('price', 0))
@@ -210,7 +228,7 @@ def get_myshop(user_id):
             booking_date = reservation.get('booking_date')
             seconds_remaining = 0
             if booking_date and reservation.get('payment_status') == 'unpaid':
-                delta = datetime.now() - booking_date
+                delta = server_now - booking_date
                 seconds_remaining = max(0, timeout_seconds - int(delta.total_seconds()))
 
             shops.append({
@@ -512,5 +530,20 @@ def get_booking_history():
         return jsonify(history), 200
     except Exception as e: 
         return jsonify({"error": str(e)}), 500
+
+# ==========================================
+# Catch-all route: serve React frontend
+# ==========================================
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve_frontend(path):
+    if os.path.exists(STATIC_DIR):
+        file_path = os.path.join(STATIC_DIR, path)
+        if path and os.path.exists(file_path):
+            return send_from_directory(STATIC_DIR, path)
+        return send_from_directory(STATIC_DIR, 'index.html')
+    return jsonify({"error": "Frontend not built"}), 404
+
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    port = int(os.environ.get('PORT', 8000))
+    app.run(debug=True, host='0.0.0.0', port=port)

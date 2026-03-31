@@ -1,8 +1,5 @@
 
--- drop database if exists kasetfair;
--- Create database kasetfair;
-
-use kasetfair;
+-- use pannawit_chak_db1;
 
 
 CREATE TABLE Users (
